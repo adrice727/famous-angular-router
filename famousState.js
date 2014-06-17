@@ -7,7 +7,13 @@ function $FamousStateProvider() {
 
   this.state = state;
   function state(name, definition) {
-    definition.name = name;
+    
+    if ( typeof name === 'object' ) {
+      definition = name;
+    } else {
+      definition.name = name;
+    }
+
     defineState(definition);
     return this;
   }
@@ -55,19 +61,14 @@ function $FamousStateProvider() {
         if ( typeof template !== 'string' || template.substr(-5) !== '.html' ) {
           throw new Error('templateUrl must be a string pointing to an HTML document (e.g. templates/myTemp.html)');
         }
-
-        var promise = fetchTemplate(name, template);
-
-        promise.then(function(templateHTML) {
-          $templateCache.put(state.name, templateHTML);
-          state.template = templateHTML;
-        }, function(reason) {
-          throw new Error('Failed to fetch template for ' + state.name + '. ' + reason);
-        });
+        state.template = {link: template};
 
       } else if ( !!state.template ) {
         template = state.template;
-        $templateCache.put(name, template);
+        if ( typeof template !== 'string' ){
+          throw new Error('template must be a string containing valid HTML');
+        }
+        state.template = {html: template};
       }
 
     },
@@ -123,35 +124,39 @@ function $FamousStateProvider() {
     }
   }
 
-
-  function fetchTemplate(stateName, templateUrl) {
-    var deferred = $q.defer();
-
-    $http.get(templateUrl).success(function(data, status) {
-      deferred.resolve(data);
-    }).error(function(data, status) {
-      deferred.reject(data);
-    });
-
-    return deferred.promise;
-
+  function fetchTemplate(state) {
+    if ( state.template.html ) {
+      return state.template.html;
+    } else {
+      return $http
+              .get(state.template.link, { cache: $templateCache })
+              .then(function(response) { return response.data; });
+    }
   }
-
+  
   $famousState.current = ''; // Name of the current state
   $famousState.$current = {}; // Current state object
   $famousState.$previous = {}; // Prior state object
   
-  $famousState.$go = function(state){
+  $famousState.includes = function(state) {
+    return states[state]? true : false;
+  };
+
+
+  $famousState.go = function(state, params, options){
 
     if ( states[state] ) {
-      $famousState.$prior = states[state]; // Set prior to the state object being transitioned out
-      $famousState.current = state; // Update with the name of the current state
-      $famousState.$current = states[state]; // Update with the current state object
+      $famousState.$prior = $famousState.$current;
+      $famousState.state = state;
+      $famousState.$current = states[state];
+      $state.$template = fetchTemplate($famousState.$current);
       $rootScope.$broadcast('$stateChangeSuccess');
     } else {
       $rootScope.$broadcast('$stateNotFound');
     }
+      
   };
+
 
   this.$get = $get;
   $get.$inject = ['$rootScope', '$q', '$http', '$view', '$injector', '$resolve', '$stateParams', '$location', '$urlRouter', '$browser'];
