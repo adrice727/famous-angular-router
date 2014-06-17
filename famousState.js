@@ -1,5 +1,5 @@
-angular.module('famous-angular', [$rootScope, $http, $templateCache])
-  .provider('famousState', function($rootScope, $http, $templateCache) {
+angular.module('famous-angular')
+  .provider('famousState', ['$rootScope', '$http', '$templateCache', function($rootScope, $http, $templateCache) {
     
   var states = {};
   var queue = {};
@@ -8,12 +8,11 @@ angular.module('famous-angular', [$rootScope, $http, $templateCache])
   this.state = state;
   function state(name, definition) {
     
-    if ( typeof name === 'object' ) {
+    if ( angular.isObject(name) ) {
       definition = name;
     } else {
       definition.name = name;
     }
-
     defineState(definition);
     return this;
   }
@@ -21,7 +20,7 @@ angular.module('famous-angular', [$rootScope, $http, $templateCache])
   function defineState(state) {
     
     var name = state.name;
-    if ( typeof(name) !== 'string' || name.indexOf('@') >= 0)  {
+    if ( !angular.isString(name) || name.indexOf('@') >= 0)  {
       throw new Error('State must have a valid name');
     }
     if (states.hasOwnProperty(name)) {
@@ -30,7 +29,7 @@ angular.module('famous-angular', [$rootScope, $http, $templateCache])
 
     // Parent state may be defined within the name of the child state or as a separate property
     var parentName = (name.indexOf('.') !== -1) ? name.substring(0, name.lastIndexOf('.'))
-        : (typeof(state.parent) === 'string') ? state.parent
+        : ( angular.isString(state.parent) ) ? state.parent
         : '';
 
     if ( !!parentName && !states[parentName] ) { return queueState(state); } 
@@ -41,9 +40,9 @@ angular.module('famous-angular', [$rootScope, $http, $templateCache])
 
   function buildState (state) {
 
-    for ( var key in stateBuilder ) {
-      stateBuilder[key](state);
-    }
+    angular.forEach(stateBuilder, function(fn) {
+      fn(state);
+    });
 
     registerState(state);
     updateQueue();
@@ -58,7 +57,7 @@ angular.module('famous-angular', [$rootScope, $http, $templateCache])
       if ( !!state.templateUrl ) {
         template = state.templateUrl;
 
-        if ( typeof template !== 'string' || template.substr(-5) !== '.html' ) {
+        if ( !angular.isString(template) || template.substr(-5) !== '.html' ) {
           throw new Error('templateUrl must be a string pointing to an HTML document (e.g. templates/myTemp.html)');
         }
         state.template = {link: template};
@@ -96,11 +95,19 @@ angular.module('famous-angular', [$rootScope, $http, $templateCache])
       var outTransition = state.outTransition;
 
       if ( !!inTransition  ){
-        state.inTransition = typeof inTransition === 'function' ? inTransition() : 'default'; 
+        if ( !angular.isFunction(inTransition)  || !angular.isString(inTransition) ) {
+          throw new Error('inTranstion must a string or a function');
+        }
+      } else {
+        state.inTransition = function() { return undefined; };
       } 
 
       if ( !!outTransition  ){
-        state.outTransition = typeof outTransition === 'function' ? outTransition() : 'default'; 
+        if ( !angular.isFunction(outTransition)  || !angular.isString(outTransition) ) {
+          throw new Error('outTranstion must a string or a function');
+        }
+      } else {
+        state.outTransition = function() { return undefined; };
       } 
     }
 
@@ -162,7 +169,7 @@ angular.module('famous-angular', [$rootScope, $http, $templateCache])
   };
 
   return { $get: function() { return $famousState; }};
-});
+}]);
 
 
 
