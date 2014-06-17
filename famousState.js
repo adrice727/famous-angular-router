@@ -1,7 +1,9 @@
 $FamousStateProvider.$inject = ['$rootScope', '$http', '$q'];
 function $FamousStateProvider() {
 
-  var states = {}, $famousState, queue = {};
+  var states = {};
+  var queue = {};
+  var $famousState = {};
 
   this.state = state;
   function state(name, definition) {
@@ -11,8 +13,7 @@ function $FamousStateProvider() {
   }
 
   function defineState(state) {
-
-    // Get state name
+    
     var name = state.name;
     if ( typeof(name) !== 'string' || name.indexOf('@') >= 0)  {
       throw new Error('State must have a valid name');
@@ -21,74 +22,107 @@ function $FamousStateProvider() {
       throw new Error('State ' + name + ' is already defined');
     }
 
-    // Get parent name, if parent
+    // Parent state may be defined within the name of the child state or as a separate property
     var parentName = (name.indexOf('.') !== -1) ? name.substring(0, name.lastIndexOf('.'))
         : (typeof(state.parent) === 'string') ? state.parent
         : '';
 
-    if ( !!parentName && !states[parentName] ) { return queueState(state); }   
+    if ( !!parentName && !states[parentName] ) { return queueState(state); } 
 
-    //Get template
+    buildState(state);
 
-    var template;
-    if ( !!state.templateUrl ) {
-      template = state.templateUrl;
+  }
 
-      if ( typeof template !== 'string' || template.substr(-5) !== '.html' ) {
-        throw new Error('templateUrl must be a string pointing to an HTML document (e.g. templates/myTemp.html)');
-      }
+  function buildState (state) {
 
-      var promise = fetchTemplate(name, template);
-
-      promise.then(function(stateName, templateString) {
-        $templateCache.put(stateName, templateString);
-      });
-
-    } else if ( !!state.template ) {
-      template = state.template;
-      $templateCache.put(name, template);
+    for ( var key in stateBuilder ) {
+      stateBuilder[key](state);
     }
-
-    if ( !!template  && !!controller ) { 
-      throw new Error('A template must defined in order to create a controller');
-    } 
-
-    var newScope = $rootScope.new();
-  
-    var controller = state.controller;
-
-    if ( typeof controller === 'string' ) {
-      $controller(controller);
-    } else if ( typeof contoller === 'function' ){
-      $controller(controller, {$scope: newScope});
-    }
-
-    var inTransition; //should be a function that returns a transform
-    var outTransition; //should be a function that returns a transform
-
 
     registerState(state);
-    
-    checkQueue();
+    updateQueue();
+
+  }
+
+  var stateBuilder = {
+
+    template: function(state) {
+
+      var template;
+      if ( !!state.templateUrl ) {
+        template = state.templateUrl;
+
+        if ( typeof template !== 'string' || template.substr(-5) !== '.html' ) {
+          throw new Error('templateUrl must be a string pointing to an HTML document (e.g. templates/myTemp.html)');
+        }
+
+        var promise = fetchTemplate(name, template);
+
+        promise.then(function(templateHTML) {
+          $templateCache.put(state.name, templateHTML);
+          state.template = templateHTML;
+        }, function(reason) {
+          throw new Error('Failed to fetch template for ' + state.name + '. ' + reason);
+        });
+
+      } else if ( !!state.template ) {
+        template = state.template;
+        $templateCache.put(name, template);
+      }
+
+    },
+
+    controller: function(){
+
+      if ( !!state.template  && !!controller ) { 
+        throw new Error('A template must defined in order to create a controller');
+      } 
+
+      var newScope = $rootScope.new();
+      
+      var controller = state.controller;
+
+      if ( typeof controller === 'string' ) {
+        $controller(controller);
+      } else if ( typeof contoller === 'function' ){
+        $controller(controller, {$scope: newScope});
+      }
+    },
+
+    transitions: function(state) {
+      //should be a function that returns a transition(I think)
+      var inTransition = state.inTransition;
+      var outTransition = state.outTransition;
+
+      if ( !!inTransition  ){
+        state.inTransition = typeof inTransition === 'function' ? inTransition() : 'default'; 
+      } 
+
+      if ( !!outTransition  ){
+        state.outTransition = typeof outTransition === 'function' ? outTransition() : 'default'; 
+      } 
+    }
+
+  };
+
+  function registerState(state) {
+    var name = state.name;
+    delete state.name;
+    states[name] = state;
   }
 
   function queueState(state) {
     if ( !!queue[state.name] ) {
       queue[state.name] = state;
     }
-  };
+  }
 
-  function checkQueue(){
-    forEach(queue, function(value, key)) {
-      buildstate(value);
+  function updateQueue(){
+    for ( var name in queue ) {
+      defineState(queue[name]);
     }
   }
 
-  function registerState(state) {
-    var key = state.name;
-    delete state.name;
-    states[key] = state;
-  }
 
   function fetchTemplate(stateName, templateUrl) {
     var deferred = $q.defer();
@@ -101,73 +135,37 @@ function $FamousStateProvider() {
 
     return deferred.promise;
 
-    }
   }
 
-
-
-    $famousState.$current = {}; //Return current state object
-    $famousState.$previous = {}; //Prior state object
-    $famousState.$go = function(state){
-
-      //Check if the passed in state exists
-      //  if not, $rootScope.$broadcast('$stateNotFound')
-      //  if found, $rootScope.$broadcast('stateChangeStart')
-      //in ui router, this method call $state.transistionTo
-
-    };
-    $famousState.current = 'current state';  //This will be a string;
+  $famousState.current = ''; // Name of the current state
+  $famousState.$current = {}; // Current state object
+  $famousState.$previous = {}; // Prior state object
   
+  $famousState.$go = function(state){
+
+    if ( states[state] ) {
+      $famousState.$prior = states[state]; // Set prior to the state object being transitioned out
+      $famousState.current = state; // Update with the name of the current state
+      $famousState.$current = states[state]; // Update with the current state object
+      $rootScope.$broadcast('$stateChangeSuccess');
+    } else {
+      $rootScope.$broadcast('$stateNotFound');
+    }
+  };
 
   this.$get = $get;
   $get.$inject = ['$rootScope', '$q', '$http', '$view', '$injector', '$resolve', '$stateParams', '$location', '$urlRouter', '$browser'];
   this.$get = function(){    
 
-    return $state;
+    return $famousState;
 
   };
+  
+}
 
-};
-
-
-angular.module('fa.router.state')
-  .value('$stateParams', {})
-  .provider('famousState', $famousStateProvider);
-
-  // var stateBuilder = {
-    
-  //   setUrl: function(state) {
-  //     var url = state.url;
-
-  //     if (isString(url)) {
-  //       if (url.charAt(0) == '^') {
-  //         return $urlMatcherFactory.compile(url.substring(1));
-  //       }
-  //       return (state.parent.navigable || root).url.concat(url);
-  //     }
-
-  //     if ($urlMatcherFactory.isMatcher(url) || url == null) {
-  //       return url;
-  //     }
-  //     throw new Error('Invalid url ' + url + ' in state ' + state + '');
-  //   },
-
-  //   setTemplate: function(state) {
+// angular.module('fa.router.state')
+//   .value('$stateParams', {})
+//   .provider('famousState', $famousStateProvider);
 
 
-  //   },
 
-  //   setContoller: function(state) {
-      
-  //     var controller = state.controller;
-  //     if ( typeof controller !== 'string' || typeof controller !== 'function' ) throw new Error('Controller must be a string or function');
-
-  //     var newScope = $rootScope.$new();
-  //     controller = $controller(state.controller, {$scope: newScope});
-  //   }, 
-
-  //   setTransitions: function(state) {
-
-
-  //   }
-  // }
