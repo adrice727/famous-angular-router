@@ -1,6 +1,6 @@
-$FamousStateProvider.$inject = ['$rootScope', '$http', '$q'];
-function $FamousStateProvider() {
-
+angular.module('famous-angular', [$rootScope, $http, $templateCache])
+  .provider('famousState', function($rootScope, $http, $templateCache) {
+    
   var states = {};
   var queue = {};
   var $famousState = {};
@@ -133,10 +133,14 @@ function $FamousStateProvider() {
               .then(function(response) { return response.data; });
     }
   }
-  
+
   $famousState.current = ''; // Name of the current state
   $famousState.$current = {}; // Current state object
   $famousState.$previous = {}; // Prior state object
+  $famousState.$template = ''; // HTML template for the current state
+  $famousState.inTransitionTo = {};
+  $famousState.outTransitionFrom = {};
+
   
   $famousState.includes = function(state) {
     return states[state]? true : false;
@@ -149,7 +153,7 @@ function $FamousStateProvider() {
       $famousState.$prior = $famousState.$current;
       $famousState.state = state;
       $famousState.$current = states[state];
-      $state.$template = fetchTemplate($famousState.$current);
+      $famousState.$template = fetchTemplate($famousState.$current);
       $rootScope.$broadcast('$stateChangeSuccess');
     } else {
       $rootScope.$broadcast('$stateNotFound');
@@ -157,20 +161,9 @@ function $FamousStateProvider() {
       
   };
 
+  return { $get: function() { return $famousState; }};
+});
 
-  this.$get = $get;
-  $get.$inject = ['$rootScope', '$q', '$http', '$view', '$injector', '$resolve', '$stateParams', '$location', '$urlRouter', '$browser'];
-  this.$get = function(){    
-
-    return $famousState;
-
-  };
-  
-}
-
-// angular.module('fa.router.state')
-//   .value('$stateParams', {})
-//   .provider('famousState', $famousStateProvider);
 
 
 
