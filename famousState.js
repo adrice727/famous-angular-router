@@ -95,25 +95,62 @@ angular.module('famous.angular')
 
       transitions: function(state) {
         //should be a function that returns a transition(I think)
-        var inTransition = state.inTransition;
-        var outTransition = state.outTransition;
+        var inTransitionFrom = state.transitions.inTransitionFrom;
+        var outTransitionTo = state.transitions.outTransitionTo;
 
-        if ( !!inTransition  ){
-          if ( !angular.isFunction(inTransition)  && !angular.isString(inTransition) && !angular.isObject(inTransition) ) {
-            throw new Error('Transitions must be defined with a string, function, or object');
-          }
-        } else {
-          state.inTransition = function() { return undefined; };
-        } 
+        if ( !!inTransitionFrom ) {
+          angular.forEach(inTransitionFrom, function (definition, property) {
+            if ( !!property && ( !angular.isString(definition) || !angular.isFunction(definition) ) ) {
+              throw new Error('inTransitionFrom property ' + property + ' must be a string or a function' );
+            } else {
+              property = null; // *************  UPDATE
+            }
+          });
+        }
 
-        if ( !!outTransition  ){
-          if ( !angular.isFunction(outTransition)  && !angular.isString(outTransition) && !angular.isObject(outTransition) ) {
-            throw new Error('Transitions must be defined with a string, function, or object');
-          }
-        } else {
-          state.outTransition = function() { return undefined; };
-        } 
+        if ( !!outTransitionTo ) {
+          angular.forEach(outTransitionTo, function (definition, property) {
+            if ( !!property && (!angular.isString(definition) || !angular.isFunction(definition)) ) {
+              throw new Error('outTransitionTo property ' + property + ' must be a string or a function' );
+            } else {
+              property = null; // *************  UPDATE
+            }
+          });
+        }
+
+        // if ( !!inTransitionFrom  ){
+        //   if ( !angular.isFunction(inTransition)  && !angular.isString(inTransition) && !angular.isObject(inTransition) ) {
+        //     throw new Error('Transitions must be defined with a string, function, or object');
+        //   }
+        // } else {
+        //   state.inTransition = function() { return undefined; };
+        // } 
+
+        // if ( !!outTransitionTo  ){
+        //   if ( !angular.isFunction(outTransition)  && !angular.isString(outTransition) && !angular.isObject(outTransition) ) {
+        //     throw new Error('Transitions must be defined with a string, function, or object');
+        //   }
+        // } else {
+        //   state.outTransition = function() { return undefined; };
+        // } 
       },
+
+
+      // $famousState.$current {
+
+      //   inTransitionFrom: {
+      //     inTransformFrom:
+      //     inOpacityFrom:
+      //     inOriginFrom:
+      //   }
+
+      //   outTransitionTo: {
+      //     outTransformFrom:
+      //     outOpacityFrom:
+      //     outOriginFrom:
+      //   }
+
+      }
       
       views: function(state) {
         var views = {};
@@ -249,21 +286,27 @@ angular.module('famous.angular')
 
       }
 
-      function fetchAll(state, name) {
+      // function fetchAll(state) {
 
-        var templates = [state.template];
+      //   var templates = [{state.name: state.template}];
 
-        if ( state.template.html ) {
-          templateRequests.push(angular.identity(state.template.html));
-        } else {
-          templateRequests.push(fetchTemplate(state.template.link, name));
-        }
+      //   angular.forEach(state.locals, (view, name) {
+      //     templates.push(view.template);
+      //   })
 
-        angular.forEach(state.locals, function(view, viewName) {
-          templateRequests.push(fetchTemplates(view, viewName));
-        })
+      //   angular.forEach(templates,  )
 
-      }
+      //   if ( state.template.html ) {
+      //     templateRequests.push(angular.identity(state.template.html));
+      //   } else {
+      //     templateRequests.push(fetchTemplate(state.template.link, name));
+      //   }
+
+      //   angular.forEach(state.locals, function(view, viewName) {
+      //     templateRequests.push(fetchTemplates(view, viewName));
+      //   })
+
+      // }
 
       function fetchLocalTemplates(locals) {
 
