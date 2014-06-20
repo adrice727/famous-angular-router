@@ -267,8 +267,7 @@ angular.module('famous.angular')
         $famousState.parent = $famousState.$current.parent;
         $famousState.$current.locals = updateLocals();
 
-        fetchAll($famousState.$current); 
-
+        // fetchAll($famousState.$current); 
         // fetch templates
         // .then -> $broadcast
 

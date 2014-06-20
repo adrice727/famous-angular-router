@@ -2664,57 +2664,6 @@ angular.module('famous.angular')
  */
 
 angular.module('famous.angular')
-  .directive('faView', ["$famous", "$famousDecorator", function ($famous, $famousDecorator) {
-    return {
-      template: '<div></div>',
-      transclude: true,
-      scope: true,
-      restrict: 'EA',
-      compile: function(tElement, tAttrs, transclude){
-        var View = $famous['famous/core/View'];
-        
-        return {
-          pre: function(scope, element, attrs){
-            var isolate = $famousDecorator.ensureIsolate(scope);
-
-            isolate.children = [];
-
-            var getOrValue = function(x) {
-              return x.get ? x.get() : x;
-            };
-
-            isolate.renderNode = new View({
-              size: scope.$eval(attrs.faSize) || [undefined, undefined]
-            });
-
-            scope.$on('$destroy', function() {
-              scope.$emit('unregisterChild', {id: scope.$id});
-            });
-
-            scope.$on('registerChild', function(evt, data){
-              if(evt.targetScope.$id != scope.$id){
-                isolate.renderNode.add(data.renderNode);
-                isolate.children.push(data);
-                evt.stopPropagation();
-              }
-            })
-
-          },
-          post: function(scope, element, attrs){
-            var isolate = $famousDecorator.ensureIsolate(scope);
-            
-            transclude(scope, function(clone) {
-              element.find('div').append(clone);
-            });
-
-            scope.$emit('registerChild', isolate);
-          }
-        }
-      }
-    };
-  }]);
-
-angular.module('famous.angular')
   .provider('$famousState', function (){
     
     var states = {};
@@ -2983,8 +2932,7 @@ angular.module('famous.angular')
         $famousState.parent = $famousState.$current.parent;
         $famousState.$current.locals = updateLocals();
 
-        fetchAll($famousState.$current); 
-
+        // fetchAll($famousState.$current); 
         // fetch templates
         // .then -> $broadcast
 
