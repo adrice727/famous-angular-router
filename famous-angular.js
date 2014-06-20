@@ -2715,11 +2715,13 @@ angular.module('famous.angular')
   }]);
 
 angular.module('famous.angular')
-  .provider('$famousState', ['$rootScope', '$http', '$templateCache', '$controller', function ($rootScope, $http, $templateCache, $controller){
+  .provider('$famousState', function (){
+    
     var states = {};
     var queue = {};
     var $famousState;
-
+    var root;
+    
     this.state = state;
     function state(name, definition) {
       
@@ -2747,24 +2749,31 @@ angular.module('famous.angular')
           : ( angular.isString(state.parent) ) ? state.parent
           : '';
 
-      if ( !!parentName && !states[parentName] ) { return queueState(state); } 
-
+      if ( !!parentName && !states[parentName] ) { return queueState(state); }
+      
       buildState(state);
 
     }
 
     function buildState (state) {
-
-      angular.forEach(stateBuilder, function(fn) {
-        fn(state);
+      
+      angular.forEach(stateBuilder, function(buildFunction) {
+        buildFunction(state);
       });
 
       registerState(state);
       updateQueue();
-
     }
 
     var stateBuilder = {
+
+      parent: function(state) {
+        if (angular.isDefined(state.parent) && state.parent) { return; }
+        // regex matches any valid composite state name
+        // would match "contact.list" but not "contacts"
+        var compositeName = /^(.+)\.[^.]+$/.exec(state.name);
+        state.parent = compositeName ? compositeName[1] : root;
+      },
 
       template: function(state) {
 
@@ -2787,21 +2796,17 @@ angular.module('famous.angular')
 
       },
 
-      controller: function(){
+      controller: function(state){
 
-        if ( !!state.template  && !!controller ) { 
+        var controller = state.controller;
+
+        if ( !state.template && !!controller ) { 
           throw new Error('A template must defined in order to create a controller');
         } 
 
-        var newScope = $rootScope.new();
-        
-        var controller = state.controller;
-
-        if ( typeof controller === 'string' ) {
-          $controller(controller);
-        } else if ( typeof contoller === 'function' ){
-          $controller(controller, {$scope: newScope});
-        }
+        if ( !!controller && !angular.isString(controller) && !angular.isFunction(controller) ) {
+          throw new Error('Controller must be a function or reference an existing controller');
+        } 
       },
 
       transitions: function(state) {
@@ -2810,23 +2815,42 @@ angular.module('famous.angular')
         var outTransition = state.outTransition;
 
         if ( !!inTransition  ){
-          if ( !angular.isFunction(inTransition)  || !angular.isString(inTransition) ) {
-            throw new Error('inTranstion must a string or a function');
+          if ( !angular.isFunction(inTransition)  && !angular.isString(inTransition) && !angular.isObject(inTransition) ) {
+            throw new Error('Transitions must be defined with a string, function, or object');
           }
         } else {
           state.inTransition = function() { return undefined; };
         } 
 
         if ( !!outTransition  ){
-          if ( !angular.isFunction(outTransition)  || !angular.isString(outTransition) ) {
-            throw new Error('outTranstion must a string or a function');
+          if ( !angular.isFunction(outTransition)  && !angular.isString(outTransition) && !angular.isObject(outTransition) ) {
+            throw new Error('Transitions must be defined with a string, function, or object');
           }
         } else {
           state.outTransition = function() { return undefined; };
         } 
+      },
+      
+      views: function(state) {
+        var views = {};
+
+        angular.forEach(angular.isDefined(state.views) ? state.views : { '': state }, function (view, name) {
+          if ( !name ) { name = '@'; }
+          if ( name.indexOf('@') === -1) { name += '@' + state.parent.name; }
+          validateView(view, name);
+          views[name] = view;
+        });
+
+        state.views = views;
       }
 
     };
+
+    function validateView (view) {
+      stateBuilder.template(view);
+      stateBuilder.controller(view);
+      stateBuilder.transitions(view);
+    }
 
     function registerState(state) {
       var name = state.name;
@@ -2845,45 +2869,174 @@ angular.module('famous.angular')
         defineState(queue[name]);
       }
     }
+
+    root = {
+      name : '',
+      parent: null,
+      views: null,
+      template: null,
+      contoller: null
+    };
     
-    $this.$get = $get;
-    $get.$inject = ['$rootScope', '$http'];
-    this.$get = function($rootScope, $http){
+    this.$get = $get;
+    $get.$inject = ['$rootScope','$http', '$q', '$templateCache'];
+    function $get($rootScope, $http, $q, $templateCache){
 
       $famousState = {
-        current: '', // Name of the current state
-        $current: {}, // Current state object
+        current: root.name, // Name of the current state
+        $current: root,
+        locals: {},
+        parent: '', // Name of the parent state
         $prior: {}, // Prior state object
         $template: '', // HTML template for the current state
-        inTransitionTo: {},
-        outTransitionFrom: {}
+        inTransitionTo: '',
+        outTransitionFrom: ''
       };
       
       $famousState.includes = function(state) {
         return states[state]? true : false;
       };
 
-      $famousState.go = function(state, params, options){
+      $famousState.go = function(state){
 
-        if ( states[state] ) {
-          $famousState.$prior = $famousState.$current;
-          $famousState.current = state;
-          $famousState.$current = states[state];
-          $famousState.$template = fetchTemplate($famousState.$current);
-          $rootScope.$broadcast('$stateChangeSuccess');
-        } else {
-          $rootScope.$broadcast('$stateNotFound');
-        }
+        validateTransfer(state);
           
       };
 
+      function validateTransfer(state) {
+
+        if ( state === $famousState.current ) { return; }
+
+        if ( state === '^' && $famousState.$parent !== root ) {
+          state = $famousState.parent;
+          return validateState(state);
+        } else {
+          $rootScope.$broadcast('$stateNotFound');
+        }
+
+        if ( state.indexOf('^') === 0 && state.length > 1 ) {
+          state = $famousState.parent + state;
+          return validateState(state);
+        }
+
+        if ( state.indexOf('.') === 0 ) {
+          state = $famousState.current + state;
+          return validateState(state);
+        }
+
+        validateState(state);
+      }
+
+      function validateState (state) {
+
+        if ( $famousState.includes(state) ) {
+          transitionState(state);
+        } else {
+          $rootScope.$broadcast('$stateNotFound');
+        } 
+      }
+
+
+
+      function transitionState(state) {
+
+        $famousState.$prior = $famousState.$current;
+        $famousState.current = state;
+        $famousState.$current = states[state];
+        $famousState.parent = $famousState.$current.parent;
+        $famousState.$current.locals = updateLocals();
+
+        fetchAll($famousState.$current); 
+
+        // fetch templates
+        // .then -> $broadcast
+
+        fetchLocalTemplates($famousState.$current.locals)
+        .then(function(data) {
+          angular.forEach(data, function(template) {
+            $famousState.$current.locals[template.name].$template = template.data;
+          });
+          return fetchTemplate($famousState.$current);
+        })
+        .then(function(template){
+          $famousState.$template = template.data;
+          $rootScope.$broadcast('$stateChangeSuccess');
+        });
+
+      }
+
+      function fetchAll(state) {
+
+        var templates = [{state.name: state.template}];
+
+        angular.forEach(state.locals, (view, name) {
+          templates.push(view.template);
+        })
+
+        angular.forEach(templates,  )
+
+        if ( state.template.html ) {
+          templateRequests.push(angular.identity(state.template.html));
+        } else {
+          templateRequests.push(fetchTemplate(state.template.link, name));
+        }
+
+        angular.forEach(state.locals, function(view, viewName) {
+          templateRequests.push(fetchTemplates(view, viewName));
+        })
+
+      }
+
+      function fetchLocalTemplates(locals) {
+
+        var templateRequests = [];
+
+        angular.forEach(locals, function(view, name) {
+          templateRequests.push(fetchTemplates(view,name));
+        });
+
+        return $q.all(templateRequests);
+      }
+
+      function updateLocals (){
+
+        var locals = {};
+
+        angular.forEach($famousState.$current.views, function (view, name) {
+          if ( name !== '@' ) {
+            locals[name] = view;
+          }
+        });
+
+        return locals;
+      }
+
+      function fetchTemplates(view, name) {
+
+        var deferred = $q.defer();
+        var template = {};
+
+        $http.get(view.template.link, {cache: $templateCache})
+        .success(function(data) {
+          template.name = name;
+          template.data = data;
+          deferred.resolve(template);
+        }).error(function(data) {
+          template.name = name;
+          template.data = data;
+          deferred.reject(template);
+        });
+
+        return deferred.promise;
+
+      }
+
       function fetchTemplate(state) {
+
         if ( state.template.html ) {
           return state.template.html;
         } else {
-          return $http
-                  .get(state.template.link, { cache: $templateCache })
-                  .then(function(response) { return response.data; });
+          return $http.get(state.template.link, { cache: $templateCache });
         }
       }
 
@@ -2891,7 +3044,7 @@ angular.module('famous.angular')
 
     }
 
-}]);
+});
 
 
 
